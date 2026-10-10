@@ -380,6 +380,7 @@ function App() {
   const [isStartingCapture, setIsStartingCapture] = useState(false);
   const [recognitionLanguages, setRecognitionLanguages] = useState([]);
   const [recognitionLanguage, setRecognitionLanguage] = useState("English");
+  const [isSpeechConfigured, setIsSpeechConfigured] = useState(false);
   const [isLoadingSpeechHealth, setIsLoadingSpeechHealth] = useState(true);
   const [actionFeedback, setActionFeedback] = useState(null);
   const [toast, setToast] = useState(null);
@@ -475,8 +476,9 @@ function App() {
     const controller = new AbortController();
     let mounted = true;
     getSpeechServiceHealth({ signal: controller.signal })
-      .then(({ recognitionLanguages: installedLanguages }) => {
+      .then(({ recognitionLanguages: installedLanguages, speechConfigured }) => {
         if (!mounted) return;
+        setIsSpeechConfigured(speechConfigured);
         setRecognitionLanguages(installedLanguages);
         if (installedLanguages.length > 0 && !installedLanguages.includes(recognitionLanguage)) {
           setRecognitionLanguage(installedLanguages[0]);
@@ -728,10 +730,14 @@ function App() {
     }
 
     const content = view === "points" ? points.join(". ") : view === "original" ? text : activeText;
+    if (content.length > 40_000) {
+      showToast("Read aloud supports up to 40,000 characters at a time. Choose a shorter reader view and try again.", "error");
+      return false;
+    }
     const controller = new AbortController();
     speechRequestRef.current = controller;
     setIsGeneratingSpeech(true);
-    showToast("Preparing offline speech…", "loading");
+    showToast("Sending text to ElevenLabs for speech…", "loading");
     try {
       const audioBlob = await synthesizeSpeech({
         text: content,
@@ -762,7 +768,7 @@ function App() {
       const wasCancelled = controller.signal.aborted;
       stopSpeech();
       if (!wasCancelled) {
-        showToast(`${error instanceof Error ? error.message : "Read aloud could not be completed."} Start the local Python speech service and check that the selected voice is installed.`, "error");
+        showToast(`${error instanceof Error ? error.message : "Read aloud could not be completed."} Check the ElevenLabs API key, voice settings, and account quota.`, "error");
       }
       return false;
     } finally {
@@ -777,7 +783,7 @@ function App() {
     setIsListening(false);
     setIsDictating(false);
     setIsTranscribing(true);
-    showToast("Transcribing your recording offline…", "loading");
+    showToast("Sending your recording to ElevenLabs for transcription…", "loading");
     let audioContext;
     try {
       const recordedAudio = new Blob(recording.chunks, { type: recording.recorder.mimeType });
@@ -819,7 +825,7 @@ function App() {
       }
     } catch (error) {
       if (!(error instanceof Error && error.name === "AbortError")) {
-        showToast(`${error instanceof Error ? error.message : "Speech recognition failed."} Check microphone recording support and that the Python speech service is running, then try again.`, "error");
+        showToast(`${error instanceof Error ? error.message : "Speech recognition failed."} Check the ElevenLabs API key and try again.`, "error");
       }
     } finally {
       recording.stream.getTracks().forEach((track) => track.stop());
@@ -840,17 +846,21 @@ function App() {
     setIsStartingCapture(true);
     let stream;
     try {
-      const { recognitionLanguages: installedLanguages } = await getSpeechServiceHealth();
+      const { recognitionLanguages: installedLanguages, speechConfigured } = await getSpeechServiceHealth();
+      setIsSpeechConfigured(speechConfigured);
       setRecognitionLanguages(installedLanguages);
+      if (!speechConfigured) {
+        throw new Error("ElevenLabs is not configured. Add ELEVENLABS_API_KEY to backend/.env, then restart the backend.");
+      }
       if (installedLanguages.length === 0) {
-        throw new Error("No offline recognition model is installed. From backend/python run `python setup_models.py English`, then restart the speech service.");
+        throw new Error("ElevenLabs has no speech recognition languages available for this account.");
       }
       const activeRecognitionLanguage = installedLanguages.includes(recognitionLanguage)
         ? recognitionLanguage
         : installedLanguages[0];
       if (activeRecognitionLanguage !== recognitionLanguage) {
         setRecognitionLanguage(activeRecognitionLanguage);
-        showToast(`Only ${activeRecognitionLanguage} recognition is installed. Using ${activeRecognitionLanguage}; install another model from backend/python to recognize a different language.`, "info");
+        showToast(`Using ${activeRecognitionLanguage} for speech recognition.`, "info");
       }
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -892,7 +902,7 @@ function App() {
       if (error instanceof Error && error.name === "NotAllowedError") {
         showToast("Microphone access was denied. Allow microphone access for this site in your browser settings, then try again.", "error");
       } else {
-        showToast(`${error instanceof Error ? error.message : "Could not start microphone recording."} Check the speech service and model, then try again.`, "error");
+        showToast(`${error instanceof Error ? error.message : "Could not start microphone recording."} Check the backend, ElevenLabs API key, and microphone permission, then try again.`, "error");
       }
     } finally {
       captureStartingRef.current = false;
@@ -1004,7 +1014,7 @@ function App() {
     } else if (/(listen|audio|read aloud|speech)/.test(normalized)) {
       answer = "Choose a voice, then press Listen in the reader controls to hear the current view. Press Stop to end playback.";
     } else if (/(voice command|microphone|dictat|speak)/.test(normalized)) {
-      answer = "Use Dictate text in the paste panel to speak text into the text box. The Voice commands button in the reader can switch views and reading levels. Both require browser microphone permission and speech-recognition support.";
+      answer = "Use Dictate text in the paste panel to speak text into the text box. The Voice commands button in the reader transcribes an instruction for you to review before applying. Both require browser microphone permission and an ElevenLabs API key configured on the backend.";
     } else if (/(language|translate|spanish|hindi)/.test(normalized)) {
       answer = "Choose a language from “Read in”. Spanish and Hindi translations are sample previews for the included example; uploaded or pasted text stays in its original language.";
     } else if (/(dark mode|dark theme|appearance)/.test(normalized)) {
@@ -1360,12 +1370,12 @@ function App() {
                   <span className="how-page-number">03</span>
                   <span className="how-page-icon">{icons.sound}</span>
                   <h2>Read or listen</h2>
-                  <p>Listen uses the local Python speech service and an installed system voice. You can also type or dictate commands such as “key points” and send them with the arrow.</p>
+                  <p>Listen uses ElevenLabs text-to-speech. You can also dictate commands such as “key points”; review the transcription and send it with the arrow. Speech requires an ElevenLabs API key and browser microphone permission.</p>
                 </article>
               </div>
               <section className="how-page-note">
                 <h2>About this prototype</h2>
-                <p>Smart quick actions and document analysis use the configured model provider; saved shortcuts and action sequences stay in this browser. Read aloud uses the local Python speech service and installed system voices. Reader-level and sample translation controls remain previews, and picture explanation is a placeholder.</p>
+                <p>Smart quick actions and document analysis use the configured model provider; saved shortcuts and action sequences stay in this browser. Read aloud and voice recognition use ElevenLabs through the backend; the API key stays on the server. Reader-level and sample translation controls remain previews, and picture explanation is a placeholder.</p>
               </section>
               <button
                 className="how-page-back"
@@ -1545,7 +1555,7 @@ function App() {
                     disabled={isLoadingSpeechHealth || recognitionLanguages.length === 0 || isStartingCapture || isTranscribing}
                     onChange={(event) => setRecognitionLanguage(event.target.value)}
                   >
-                    {recognitionLanguages.length === 0 && <option value="">{isLoadingSpeechHealth ? "Checking speech service…" : "Speech model unavailable"}</option>}
+                    {recognitionLanguages.length === 0 && <option value="">{isLoadingSpeechHealth ? "Checking speech service…" : isSpeechConfigured ? "Speech languages unavailable" : "Add ElevenLabs API key"}</option>}
                     {recognitionLanguages.map((installedLanguage) => <option key={installedLanguage} value={installedLanguage}>{installedLanguage} recognition</option>)}
                   </select>
                     </label>
@@ -1821,7 +1831,7 @@ function App() {
                             disabled={isLoadingSpeechHealth || recognitionLanguages.length === 0 || isStartingCapture || isTranscribing || isApplyingReaderCommand}
                             onChange={(event) => setRecognitionLanguage(event.target.value)}
                           >
-                            {recognitionLanguages.length === 0 && <option value="">{isLoadingSpeechHealth ? "Checking speech service…" : "Speech model unavailable"}</option>}
+                            {recognitionLanguages.length === 0 && <option value="">{isLoadingSpeechHealth ? "Checking speech service…" : isSpeechConfigured ? "Speech languages unavailable" : "Add ElevenLabs API key"}</option>}
                             {recognitionLanguages.map((installedLanguage) => <option key={installedLanguage} value={installedLanguage}>{installedLanguage} recognition</option>)}
                           </select>
                         </label>
@@ -1853,7 +1863,7 @@ function App() {
                           </svg>
                         </button>
                       </form>
-                      <p className="voice-help">Speak or type an instruction, then press the arrow. The model edits the document in place; the revised text appears in the reader, not a separate answer tab.</p>
+                      <p className="voice-help">Speak or type an instruction, then press the arrow. The model edits the document in place; the revised text appears in the reader, not a separate answer tab. Recordings and read-aloud text are sent to ElevenLabs for processing.</p>
                     </div>
                   </div>
                 </div>

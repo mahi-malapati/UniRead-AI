@@ -1,14 +1,14 @@
 # UniRead AI
 
-UniRead AI is a document reader built with React, Vite, and Tailwind CSS. It can extract text from TXT, DOCX, PPTX, and text-based PDF files, then help readers explore the content with reading-level explanations, key points, document summaries, mind maps, a pictorial visualization, and read-aloud or offline dictation.
+UniRead AI is a document reader built with React, Vite, and Tailwind CSS. It can extract text from TXT, DOCX, PPTX, and text-based PDF files, then help readers explore the content with reading-level explanations, key points, document summaries, mind maps, a pictorial visualization, and ElevenLabs-powered read aloud and speech recognition.
 
-The frontend lives in [`frontend/`](./frontend/). A Node.js API in [`backend/`](./backend/) uses a server-side, OpenAI-compatible model provider (Groq by default). An optional local Python service provides speech synthesis and offline speech recognition.
+The frontend lives in [`frontend/`](./frontend/). A Node.js API in [`backend/`](./backend/) uses a server-side, OpenAI-compatible model provider (Groq by default) and securely proxies speech requests to ElevenLabs.
 
 ## Requirements
 
 - Node.js 22.12 or newer
 - A Groq API key for model-powered analysis and quick actions
-- Python 3.10 or newer for optional speech features
+- An ElevenLabs API key for read aloud and speech recognition
 
 ## Start the app
 
@@ -37,18 +37,15 @@ The frontend lives in [`frontend/`](./frontend/). A Node.js API in [`backend/`](
 
 4. Open the local URL printed by Vite.
 
-## Optional offline speech
+## Speech with ElevenLabs
 
-Install the Python dependencies and English speech-recognition model, then start the speech service:
+Add your ElevenLabs key to `backend/.env`:
 
-```powershell
-cd backend\python
-python -m pip install -r requirements.txt
-python setup_models.py
-python -m uvicorn app:app --host 127.0.0.1 --port 8000
+```dotenv
+ELEVENLABS_API_KEY=your_elevenlabs_api_key
 ```
 
-Run the speech service in a separate terminal alongside the frontend and Node.js backend. Speech uses locally installed system voices and Vosk models.
+Restart the Node backend after setting it. The key stays on the server. Read aloud uses ElevenLabs text-to-speech; microphone dictation and voice commands use ElevenLabs speech-to-text. Recordings are sent to ElevenLabs for processing, and usage is subject to your account plan.
 
 ## Features
 
@@ -59,7 +56,7 @@ Run the speech service in a separate terminal alongside the frontend and Node.js
 - Adjust output language, font, font size, and visible line limit.
 - Use keyboard shortcuts and saved sequences for Smart Quick Actions.
 - Submit optional post-action feedback, stored in the current browser.
-- Use dark mode, high contrast, read-aloud, and offline voice dictation.
+- Use dark mode, high contrast, ElevenLabs read-aloud, and voice dictation.
 
 ## Security and deployment
 

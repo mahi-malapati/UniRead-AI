@@ -11,6 +11,11 @@ const configuredEnv = {
   OPENAI_MODEL: "test-model",
   ANALYSIS_TIMEOUT_MS: "1000",
 };
+const speechConfiguredEnv = {
+  ...configuredEnv,
+  ELEVENLABS_API_KEY: "test-elevenlabs-key",
+  SPEECH_TIMEOUT_MS: "1000",
+};
 
 const modelAnalysis = {
   overview: "A concise overview.",
@@ -92,6 +97,14 @@ function makeCommandRequest(body, { headers = {} } = {}) {
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
+}
+
+function createSpeechTestServer(fetchImpl, env = speechConfiguredEnv) {
+  return createServer(createApp({
+    env,
+    logger: { error() {} },
+    fetchImpl,
+  }));
 }
 
 describe("GET /api/health", () => {
@@ -240,6 +253,99 @@ describe("POST /api/analyze", () => {
       assert.match((await response.json()).error, /unexpected result format/i);
     } finally {
       await new Promise((resolve, reject) => testServer.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+});
+
+describe("ElevenLabs speech endpoints", () => {
+  it("reports speech readiness without exposing the API key", async () => {
+    const speechServer = createSpeechTestServer(async () => {
+      throw new Error("The health endpoint must not contact ElevenLabs.");
+    });
+    await new Promise((resolve) => speechServer.listen(0, "127.0.0.1", resolve));
+    try {
+      const response = await fetch(`http://127.0.0.1:${speechServer.address().port}/api/speech/health`);
+      const payload = await response.json();
+      assert.equal(response.status, 200);
+      assert.equal(payload.speechConfigured, true);
+      assert.deepEqual(payload.recognitionLanguages, ["English", "Spanish", "Hindi", "Telugu"]);
+      assert.equal(JSON.stringify(payload).includes(speechConfiguredEnv.ELEVENLABS_API_KEY), false);
+    } finally {
+      await new Promise((resolve, reject) => speechServer.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  it("uses the configured ElevenLabs voice for read-aloud MP3 audio", async () => {
+    let providerRequest;
+    const speechServer = createSpeechTestServer(async (url, options) => {
+      providerRequest = { url, options, body: JSON.parse(options.body) };
+      return new Response(Buffer.from("fake-mp3"), {
+        status: 200,
+        headers: { "Content-Type": "audio/mpeg" },
+      });
+    });
+    await new Promise((resolve) => speechServer.listen(0, "127.0.0.1", resolve));
+    try {
+      const response = await fetch(`http://127.0.0.1:${speechServer.address().port}/api/speech`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "Read this aloud.", voice: "female", language: "Telugu" }),
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("content-type"), "audio/mpeg");
+      assert.equal(Buffer.from(await response.arrayBuffer()).toString(), "fake-mp3");
+      assert.equal(providerRequest.url, "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM?output_format=mp3_44100_128");
+      assert.deepEqual(providerRequest.body, {
+        text: "Read this aloud.",
+        model_id: "eleven_flash_v2_5",
+        language_code: "te",
+      });
+      assert.equal(providerRequest.options.headers["xi-api-key"], speechConfiguredEnv.ELEVENLABS_API_KEY);
+    } finally {
+      await new Promise((resolve, reject) => speechServer.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  it("forwards microphone audio to Scribe and returns the transcript", async () => {
+    let providerRequest;
+    const speechServer = createSpeechTestServer(async (url, options) => {
+      providerRequest = { url, options };
+      return jsonResponse({ text: "Recognized speech." });
+    });
+    await new Promise((resolve) => speechServer.listen(0, "127.0.0.1", resolve));
+    try {
+      const response = await fetch(`http://127.0.0.1:${speechServer.address().port}/api/speech/transcribe?language=Hindi`, {
+        method: "POST",
+        headers: { "Content-Type": "audio/wav" },
+        body: Buffer.from("fake-wav"),
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { text: "Recognized speech." });
+      assert.equal(providerRequest.url, "https://api.elevenlabs.io/v1/speech-to-text");
+      assert.equal(providerRequest.options.headers["xi-api-key"], speechConfiguredEnv.ELEVENLABS_API_KEY);
+      assert.equal(providerRequest.options.body.get("model_id"), "scribe_v2");
+      assert.equal(providerRequest.options.body.get("language_code"), "hi");
+      assert.equal(providerRequest.options.body.get("file").type, "audio/wav");
+    } finally {
+      await new Promise((resolve, reject) => speechServer.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  it("requires an ElevenLabs key before forwarding audio", async () => {
+    const speechServer = createSpeechTestServer(async () => {
+      throw new Error("The unconfigured speech endpoint must not contact ElevenLabs.");
+    }, configuredEnv);
+    await new Promise((resolve) => speechServer.listen(0, "127.0.0.1", resolve));
+    try {
+      const response = await fetch(`http://127.0.0.1:${speechServer.address().port}/api/speech`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "Read this." }),
+      });
+      assert.equal(response.status, 503);
+      assert.match((await response.json()).error, /ELEVENLABS_API_KEY/);
+    } finally {
+      await new Promise((resolve, reject) => speechServer.close((error) => error ? reject(error) : resolve()));
     }
   });
 });

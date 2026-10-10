@@ -2,7 +2,7 @@ import cors from "cors";
 import express from "express";
 import { rateLimit } from "express-rate-limit";
 import helmet from "helmet";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import {
   analysisRequestSchema,
   ProviderError,
@@ -10,7 +10,8 @@ import {
   requestTextAnalysis,
   readerCommandRequestSchema,
 } from "./analysis.js";
-import { isAnalysisConfigured, readConfig } from "./config.js";
+import { isAnalysisConfigured, isSpeechConfigured, readConfig } from "./config.js";
+import { requestSpeechSynthesis, requestSpeechTranscription } from "./speech.js";
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -51,6 +52,94 @@ export function createApp({ env = process.env, fetchImpl = fetch, logger = conso
     legacyHeaders: false,
     message: { error: "Too many analysis requests. Wait a minute and try again." },
   });
+  const speechLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 10,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: { error: "Too many speech requests. Wait a minute and try again." },
+  });
+
+  app.get("/api/speech/health", (_request, response) => {
+    const configured = isSpeechConfigured(config);
+    response.json({
+      status: "ok",
+      speechConfigured: configured,
+      recognitionLanguages: configured ? ["English", "Spanish", "Hindi", "Telugu"] : [],
+    });
+  });
+
+  app.post("/api/speech", speechLimiter, async (request, response, next) => {
+    try {
+      if (!isSpeechConfigured(config)) {
+        throw new HttpError(503, "Speech is not configured. Set ELEVENLABS_API_KEY in backend/.env and restart the API.");
+      }
+      const parsed = z.strictObject({
+        text: z.string().trim().min(1).max(40_000),
+        voice: z.enum(["female", "male"]).default("female"),
+        language: z.enum(["English", "Spanish", "Hindi", "Telugu"]).default("English"),
+      }).safeParse(request.body);
+      if (!parsed.success) throw parsed.error;
+
+      try {
+        const audio = await requestSpeechSynthesis({ config, input: parsed.data, fetchImpl });
+        response
+          .status(200)
+          .set("Content-Type", "audio/mpeg")
+          .set("Cache-Control", "no-store")
+          .send(audio);
+      } catch (error) {
+        if (error instanceof ProviderError) throw error;
+        if (error?.name === "TimeoutError" || error?.name === "AbortError") {
+          throw new ProviderError("ElevenLabs speech synthesis timed out. Try shorter text or retry later.", 504);
+        }
+        logger.error("ElevenLabs speech synthesis request failed.", error);
+        throw new ProviderError("ElevenLabs speech synthesis is temporarily unavailable.", 503);
+      }
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post(
+    "/api/speech/transcribe",
+    speechLimiter,
+    express.raw({ type: ["audio/*", "application/octet-stream"], limit: "20mb" }),
+    async (request, response, next) => {
+      try {
+        if (!isSpeechConfigured(config)) {
+          throw new HttpError(503, "Speech recognition is not configured. Set ELEVENLABS_API_KEY in backend/.env and restart the API.");
+        }
+        const language = z.enum(["English", "Spanish", "Hindi", "Telugu"]).safeParse(request.query.language);
+        if (!language.success) {
+          throw new HttpError(400, "Choose a supported speech recognition language.");
+        }
+        if (!Buffer.isBuffer(request.body) || request.body.length === 0) {
+          throw new HttpError(400, "No audio was received. Record a short voice clip and try again.");
+        }
+
+        try {
+          const text = await requestSpeechTranscription({
+            config,
+            audio: request.body,
+            contentType: request.get("content-type") || "audio/wav",
+            language: language.data,
+            fetchImpl,
+          });
+          response.status(200).json({ text });
+        } catch (error) {
+          if (error instanceof ProviderError) throw error;
+          if (error?.name === "TimeoutError" || error?.name === "AbortError") {
+            throw new ProviderError("ElevenLabs speech recognition timed out. Record a shorter clip or retry later.", 504);
+          }
+          logger.error("ElevenLabs speech recognition request failed.", error);
+          throw new ProviderError("ElevenLabs speech recognition is temporarily unavailable.", 503);
+        }
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
 
   app.post("/api/analyze", analyzeLimiter, async (request, response, next) => {
     try {
@@ -122,7 +211,9 @@ export function createApp({ env = process.env, fetchImpl = fetch, logger = conso
       response.status(400).json({
         error: request.path === "/api/reader-command"
           ? "Invalid reader command request."
-          : "Invalid analysis request.",
+          : request.path.startsWith("/api/speech")
+            ? "Invalid speech request."
+            : "Invalid analysis request.",
         details: error.issues.map((issue) => ({
           field: issue.path.join("."),
           message: issue.message,
