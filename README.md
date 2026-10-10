@@ -60,7 +60,7 @@ Restart the Node backend after setting it. The key stays on the server. Read alo
 
 Never add API keys or other credentials to frontend code or commit `.env` files. For a single-project Vercel deployment:
 
-1. Import this GitHub repository into Vercel and leave the project root set to the repository root. The included `vercel.json` builds the frontend to `frontend/dist` and the `api/[...path].js` function serves the Express API.
+1. Import this GitHub repository into Vercel and leave the project root set to the repository root. The included `vercel.json` configures a Vercel frontend service (`frontend/`) and Express API service (`backend/`) under one project and routes `/api/*` to the API.
 2. In the Vercel project settings, set the Node.js version to 22.x and add `GROQ_API_KEY` and `ELEVENLABS_API_KEY` as encrypted environment variables for the environments you use. Do not add either key with a `VITE_` prefix.
 3. If you use a custom domain, set `FRONTEND_ORIGINS` to its full origin, for example `https://uniread.example.com`. Vercel preview and production deployment origins are allowed automatically.
 4. Deploy. The frontend calls `/api/*` on the same origin, so no separate API URL is needed. Verify `/api/health` and `/api/speech/health` on the deployed domain.
