@@ -383,6 +383,10 @@ function App() {
   const [isSpeechConfigured, setIsSpeechConfigured] = useState(false);
   const [isLoadingSpeechHealth, setIsLoadingSpeechHealth] = useState(true);
   const [actionFeedback, setActionFeedback] = useState(null);
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [customFeedbackText, setCustomFeedbackText] = useState("");
+  const [customFeedbackRating, setCustomFeedbackRating] = useState("helpful");
+  const [customFeedbackCategory, setCustomFeedbackCategory] = useState("Overall experience");
   const [toast, setToast] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -1077,6 +1081,32 @@ function App() {
     }
   }
 
+  function submitGeneralFeedback(event) {
+    event.preventDefault();
+    if (!customFeedbackText.trim()) {
+      showToast("Please enter your feedback before submitting.", "info");
+      return;
+    }
+    try {
+      const storedFeedback = window.localStorage.getItem(ACTION_FEEDBACK_STORAGE_KEY);
+      const history = storedFeedback ? JSON.parse(storedFeedback) : [];
+      if (!Array.isArray(history)) throw new Error("Saved feedback data is invalid.");
+      history.push({
+        action: customFeedbackCategory,
+        rating: customFeedbackRating,
+        comment: customFeedbackText.trim(),
+        createdAt: new Date().toISOString(),
+      });
+      window.localStorage.setItem(ACTION_FEEDBACK_STORAGE_KEY, JSON.stringify(history.slice(-30)));
+      setCustomFeedbackText("");
+      setFeedbackModalOpen(false);
+      showToast("Thanks for your feedback! It was saved successfully.", "success");
+    } catch (error) {
+      showToast(`${error instanceof Error ? error.message : "Feedback could not be saved."} Check browser storage settings and try again.`, "error");
+    }
+  }
+
+
 
   async function handleChatFile(file) {
     if (!file) return;
@@ -1253,6 +1283,17 @@ function App() {
             <button
               className="text-button"
               type="button"
+              aria-label="Give feedback"
+              onClick={() => setFeedbackModalOpen(true)}
+            >
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>Feedback</span>
+            </button>
+            <button
+              className="text-button"
+              type="button"
               aria-pressed={darkMode}
               aria-label={darkMode ? "Turn off dark mode" : "Turn on dark mode"}
               onClick={() => {
@@ -1277,6 +1318,7 @@ function App() {
             >
               {icons.contrast}<span>High contrast</span>
             </button>
+
           </div>
         </header>
 
@@ -1969,8 +2011,99 @@ function App() {
           </svg>
         )}
       </button>
+
+      <button
+        className="fixed-feedback-button"
+
+        type="button"
+        aria-label="Open feedback form"
+        title="Share your feedback"
+        onClick={() => setFeedbackModalOpen(true)}
+      >
+        <span className="fixed-feedback-icon" aria-hidden="true">💬</span>
+        <span>Feedback</span>
+      </button>
+
+      {feedbackModalOpen && (
+        <div className="feedback-modal-backdrop" onClick={() => setFeedbackModalOpen(false)}>
+          <div className="feedback-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-labelledby="feedback-modal-title" aria-modal="true">
+            <header className="feedback-modal-header">
+              <div>
+                <h3 id="feedback-modal-title">Share Your Feedback</h3>
+                <p>Help us improve your reading experience</p>
+              </div>
+              <button
+                className="feedback-modal-close"
+                type="button"
+                aria-label="Close feedback dialog"
+                onClick={() => setFeedbackModalOpen(false)}
+              >×</button>
+            </header>
+            <form onSubmit={submitGeneralFeedback} className="feedback-modal-form">
+              <label htmlFor="feedback-category">What are you giving feedback on?</label>
+              <select
+                id="feedback-category"
+                value={customFeedbackCategory}
+                onChange={(event) => setCustomFeedbackCategory(event.target.value)}
+              >
+                <option value="Overall experience">Overall experience</option>
+                <option value="Voice commands & speech">Voice commands & speech</option>
+                <option value="Document analysis">Document analysis</option>
+                <option value="Quick Simplify">Quick Simplify</option>
+                <option value="Mind maps & summaries">Mind maps & summaries</option>
+              </select>
+
+              <label>How was your experience?</label>
+              <div className="feedback-modal-ratings" role="group" aria-label="Rate your experience">
+                <button
+                  type="button"
+                  className={customFeedbackRating === "helpful" ? "active" : ""}
+                  aria-pressed={customFeedbackRating === "helpful"}
+                  onClick={() => setCustomFeedbackRating("helpful")}
+                >👍 Great / Helpful</button>
+                <button
+                  type="button"
+                  className={customFeedbackRating === "neutral" ? "active" : ""}
+                  aria-pressed={customFeedbackRating === "neutral"}
+                  onClick={() => setCustomFeedbackRating("neutral")}
+                >😐 Okay</button>
+                <button
+                  type="button"
+                  className={customFeedbackRating === "not-helpful" ? "active" : ""}
+                  aria-pressed={customFeedbackRating === "not-helpful"}
+                  onClick={() => setCustomFeedbackRating("not-helpful")}
+                >👎 Needs work</button>
+              </div>
+
+              <label htmlFor="feedback-comment-input">Your comments or suggestions:</label>
+              <textarea
+                id="feedback-comment-input"
+                rows="3"
+                value={customFeedbackText}
+                placeholder="What did you like? What should we add or change?..."
+                maxLength={500}
+                required
+                onChange={(event) => setCustomFeedbackText(event.target.value)}
+              />
+
+              <div className="feedback-modal-actions">
+                <button
+                  type="button"
+                  className="feedback-modal-cancel"
+                  onClick={() => setFeedbackModalOpen(false)}
+                >Cancel</button>
+                <button
+                  type="submit"
+                  className="feedback-modal-submit"
+                >Submit feedback</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 export default App;

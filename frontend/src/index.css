@@ -630,6 +630,38 @@ h1 { margin: 10px 0 7px; font-size: clamp(25px, 3vw, 32px); font-weight: 700; le
   .assistant-launcher { right: 16px; bottom: 16px; width: 54px; height: 54px; }
   .assistant-panel { right: 15px; bottom: 82px; width: min(360px, calc(100vw - 30px)); height: min(470px, calc(100vh - 100px)); }
 }
+
+.fixed-feedback-button { position: fixed; left: 24px; bottom: 24px; z-index: 8; display: inline-flex; align-items: center; gap: 7px; min-height: 42px; padding: 0 16px; border: 1px solid #7ea683; border-radius: 9999px; color: #ffffff; background: var(--green, #285437); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15); font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+
+.fixed-feedback-button:hover { background: var(--green-dark, #1b3d27); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22); }
+.fixed-feedback-icon { font-size: 15px; }
+.dark-mode .fixed-feedback-button { background: #254d33; border-color: #3f7e53; color: #e5ede6; }
+.feedback-modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: rgba(14, 25, 18, 0.55); backdrop-filter: blur(4px); }
+.feedback-modal { width: min(480px, 100%); padding: 22px; border: 1px solid var(--line, #e2e8e0); border-radius: 14px; background: var(--paper, #ffffff); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2); color: var(--ink, #1f2937); }
+.feedback-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.feedback-modal-header h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--green-dark, #1b3d27); }
+.feedback-modal-header p { margin: 2px 0 0; font-size: 11px; color: var(--muted, #6b7280); }
+.feedback-modal-close { width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent; color: var(--muted, #6b7280); font-size: 24px; line-height: 1; cursor: pointer; }
+.feedback-modal-close:hover { background: var(--pale, #edf7ed); color: var(--ink, #1f2937); }
+.feedback-modal-form { display: grid; gap: 12px; }
+.feedback-modal-form label { font-size: 11px; font-weight: 650; color: var(--ink, #1f2937); }
+.feedback-modal-form select, .feedback-modal-form textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line, #d1d5db); border-radius: 8px; background: var(--paper, #ffffff); color: var(--ink, #1f2937); font: inherit; font-size: 12px; }
+.feedback-modal-form textarea { resize: vertical; min-height: 70px; }
+.feedback-modal-ratings { display: flex; flex-wrap: wrap; gap: 8px; }
+.feedback-modal-ratings button { min-height: 32px; padding: 0 12px; border: 1px solid var(--line, #d1d5db); border-radius: 7px; background: var(--paper, #ffffff); color: var(--ink, #1f2937); font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s ease; }
+.feedback-modal-ratings button:hover, .feedback-modal-ratings button.active { border-color: var(--green, #285437); background: var(--pale, #edf7ed); color: var(--green-dark, #1b3d27); }
+.feedback-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.feedback-modal-cancel { min-height: 34px; padding: 0 14px; border: 1px solid var(--line, #d1d5db); border-radius: 7px; background: transparent; color: var(--muted, #6b7280); font-size: 12px; font-weight: 600; cursor: pointer; }
+.feedback-modal-submit { min-height: 34px; padding: 0 16px; border: 0; border-radius: 7px; background: var(--green, #285437); color: #ffffff; font-size: 12px; font-weight: 700; cursor: pointer; transition: background 0.15s ease; }
+.feedback-modal-submit:hover { background: var(--green-dark, #1b3d27); }
+.dark-mode .feedback-modal { background: #1e2821; border-color: #3b5040; color: #e5ede6; }
+.dark-mode .feedback-modal-header h3 { color: #9cd4a6; }
+.dark-mode .feedback-modal-form select, .dark-mode .feedback-modal-form textarea, .dark-mode .feedback-modal-ratings button { background: #17211a; border-color: #344839; color: #e5ede6; }
+.dark-mode .feedback-modal-ratings button:hover, .dark-mode .feedback-modal-ratings button.active { background: #25382b; border-color: #4c7757; color: #9cd4a6; }
+@media (max-width: 768px) {
+  .fixed-feedback-button { left: 16px; bottom: 16px; padding: 0 12px; min-height: 38px; font-size: 12px; }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
