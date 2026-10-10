@@ -1241,10 +1241,6 @@ function App() {
             <strong>A little help goes a long way</strong>
             <p>Choose a reading level, switch to key points, or press Listen to hear your document aloud.</p>
           </div>
-          <div className="user-card">
-            <span className="user-avatar" aria-hidden="true">G</span>
-            <span><span className="user-name">Guest reader</span><span className="user-detail">Your personal workspace</span></span>
-          </div>
         </div>
       </aside>
 
