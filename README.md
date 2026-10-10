@@ -12,27 +12,25 @@ The frontend lives in [`frontend/`](./frontend/). A Node.js API in [`backend/`](
 
 ## Start the app
 
-1. Install backend dependencies and configure the model provider:
+1. Install project dependencies and configure the model provider:
 
    ```powershell
-   cd backend
    npm install
-   Copy-Item .env.example .env
+   Copy-Item backend/.env.example backend/.env
    ```
 
    Add your `GROQ_API_KEY` to `backend/.env`. Keep this file private; it is excluded from Git.
 
-2. Start the backend in the `backend` directory:
+2. Start the backend:
 
    ```powershell
-   npm run dev
+   npm run dev:backend
    ```
 
-3. In another terminal, start the frontend from the project root:
+3. In another terminal, start the frontend:
 
    ```powershell
-   npm --prefix frontend install
-   npm --prefix frontend run dev
+   npm run dev:frontend
    ```
 
 4. Open the local URL printed by Vite.
@@ -60,4 +58,11 @@ Restart the Node backend after setting it. The key stays on the server. Read alo
 
 ## Security and deployment
 
-Never add API keys or other credentials to frontend code or commit `.env` files. The API is configured for local development; see [`backend/README.md`](./backend/README.md) for API details and security considerations before deploying it publicly.
+Never add API keys or other credentials to frontend code or commit `.env` files. For a single-project Vercel deployment:
+
+1. Import this GitHub repository into Vercel and leave the project root set to the repository root. The included `vercel.json` builds the frontend to `frontend/dist` and the `api/[...path].js` function serves the Express API.
+2. In the Vercel project settings, set the Node.js version to 22.x and add `GROQ_API_KEY` and `ELEVENLABS_API_KEY` as encrypted environment variables for the environments you use. Do not add either key with a `VITE_` prefix.
+3. If you use a custom domain, set `FRONTEND_ORIGINS` to its full origin, for example `https://uniread.example.com`. Vercel preview and production deployment origins are allowed automatically.
+4. Deploy. The frontend calls `/api/*` on the same origin, so no separate API URL is needed. Verify `/api/health` and `/api/speech/health` on the deployed domain.
+
+See [`backend/README.md`](./backend/README.md) for API details and security considerations before deploying it publicly.

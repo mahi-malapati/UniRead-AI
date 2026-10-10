@@ -20,12 +20,24 @@ export function readConfig(env = process.env) {
     throw new Error("SPEECH_TIMEOUT_MS must be an integer from 1000 to 120000.");
   }
 
+  const frontendOrigins = (env.FRONTEND_ORIGINS || "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5177,http://127.0.0.1:5177")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const deploymentOrigins = [env.VERCEL_URL, env.VERCEL_PROJECT_PRODUCTION_URL]
+    .filter(Boolean)
+    .map((host) => {
+      try {
+        return new URL(host.startsWith("http") ? host : `https://${host}`).origin;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+
   return {
     port,
-    frontendOrigins: (env.FRONTEND_ORIGINS || "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5177,http://127.0.0.1:5177")
-      .split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean),
+    frontendOrigins: [...new Set([...frontendOrigins, ...deploymentOrigins])],
     openAiApiKey: usesGroq
       ? env.GROQ_API_KEY || ""
       : env.OPENAI_API_KEY || env.GROQ_API_KEY || "",

@@ -18,7 +18,7 @@ Read aloud and speech recognition use the ElevenLabs API through the Express bac
 
 1. Configure `GROQ_API_KEY` in `backend/.env`. The current Groq endpoint is `https://api.groq.com/openai/v1` and the default model is `openai/gpt-oss-120b`.
 2. Create a Groq API key in the Groq console. Do not use an OpenAI API key in `GROQ_API_KEY`.
-3. Copy `frontend/.env.example` to `frontend/.env` if the API is not running at `http://localhost:3001`; set `VITE_API_URL` to its origin.
+3. For local development, the Vite server proxies `/api` to `http://localhost:3001`. If the API is hosted on a different origin, copy `frontend/.env.example` to `frontend/.env` and set `VITE_API_URL` to that origin.
 4. Set `FRONTEND_ORIGINS` in `backend/.env` to the exact frontend origins allowed to call the API. Local development defaults allow the Vite ports 5173 and 5177 on `localhost` and `127.0.0.1`.
 5. Set `ELEVENLABS_API_KEY` in `backend/.env` to enable ElevenLabs text-to-speech and speech-to-text. Optional settings select the TTS model, female/male voice IDs, and speech timeout.
 
@@ -38,7 +38,7 @@ Run the frontend separately with `npm --prefix frontend run dev`. The health end
 
 ### ElevenLabs speech
 
-The browser records microphone input and sends it to the backend, which forwards audio to ElevenLabs Scribe v2 and returns the transcript. Read aloud sends the selected reader text to ElevenLabs Flash v2.5 and returns MP3 audio for browser playback. No Python service or speech model downloads are required. Microphone access is required, and recordings are limited to 3 minutes/20 MB.
+The browser records microphone input and sends the compressed recording to the backend, which forwards audio to ElevenLabs Scribe v2 and returns the transcript. Read aloud sends the selected reader text to ElevenLabs Flash v2.5 and returns MP3 audio for browser playback. No Python service or speech model downloads are required. Microphone access is required, and recordings are limited to 3 minutes/4 MB.
 
 `GET /api/speech/health` reports whether an ElevenLabs key is configured and which transcription-language choices are available. `POST /api/speech` returns MP3 audio and accepts up to 40,000 characters using ElevenLabs Flash v2.5. `POST /api/speech/transcribe?language=English` accepts an audio body and returns `{ "text": "recognized words" }`. Set `ELEVENLABS_BASE_URL` for a regional ElevenLabs API endpoint, `ELEVENLABS_FEMALE_VOICE_ID` / `ELEVENLABS_MALE_VOICE_ID` for your preferred voices, and `SPEECH_TIMEOUT_MS` to change the request timeout.
 
@@ -61,7 +61,7 @@ The ElevenLabs key is never sent to the frontend. Speech audio and microphone re
 
 Success returns `200` with `title`, `readingLevel`, `language`, and an `analysis` object containing `overview`, `readingLevels`, `keyPoints`, `pictureExplanations`, `pictureScenes`, and `explanationSteps`. Each reading level has its own explanation, picture analogy, three-subject pictorial scene, and exactly three document-specific explanation steps. Text is limited to 50,000 characters; requests are rate-limited to 10 per minute per IP.
 
-The API is unauthenticated. The default CORS allowlist and in-memory IP rate limit are intended for local development only. Before public deployment, add user authentication and shared abuse/rate controls at a trusted proxy or gateway.
+The API is unauthenticated. The API allows the current Vercel deployment and production origins automatically; set `FRONTEND_ORIGINS` in Vercel to include any custom domain. The in-memory IP rate limit is per function instance, so public deployments should add user authentication and shared abuse/rate controls at a trusted proxy or gateway.
 
 ## Tests
 

@@ -204,51 +204,6 @@ function PictorialDocumentScene({ scene, documentName, level }) {
   );
 }
 
-function encodeMonoWav(audioBuffer) {
-  const sampleRate = 16_000;
-  const frameCount = Math.ceil(audioBuffer.length * sampleRate / audioBuffer.sampleRate);
-  const wav = new ArrayBuffer(44 + frameCount * 2);
-  const view = new DataView(wav);
-  const writeAscii = (offset, value) => {
-    for (let index = 0; index < value.length; index += 1) {
-      view.setUint8(offset + index, value.charCodeAt(index));
-    }
-  };
-  writeAscii(0, "RIFF");
-  view.setUint32(4, 36 + frameCount * 2, true);
-  writeAscii(8, "WAVE");
-  writeAscii(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeAscii(36, "data");
-  view.setUint32(40, frameCount * 2, true);
-
-  const channels = Array.from(
-    { length: audioBuffer.numberOfChannels },
-    (_, index) => audioBuffer.getChannelData(index),
-  );
-  const ratio = audioBuffer.sampleRate / sampleRate;
-  for (let frame = 0; frame < frameCount; frame += 1) {
-    const sourceIndex = frame * ratio;
-    const lowerIndex = Math.min(Math.floor(sourceIndex), audioBuffer.length - 1);
-    const upperIndex = Math.min(lowerIndex + 1, audioBuffer.length - 1);
-    const fraction = sourceIndex - lowerIndex;
-    const monoSample = channels.reduce((sum, channel) => {
-      const sample = channel[lowerIndex] * (1 - fraction) + channel[upperIndex] * fraction;
-      return sum + sample;
-    }, 0) / channels.length;
-    const clippedSample = Math.max(-1, Math.min(1, monoSample));
-    view.setInt16(44 + frame * 2, clippedSample < 0 ? clippedSample * 0x8000 : clippedSample * 0x7fff, true);
-  }
-
-  return new Blob([wav], { type: "audio/wav" });
-}
-
 const icons = {
   book: (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -791,6 +746,10 @@ function App() {
         showToast("No microphone audio was recorded. Check your microphone and record again.", "error");
         return;
       }
+      if (recordedAudio.size > 4 * 1024 * 1024) {
+        showToast("Recordings must be 4 MB or smaller. Record a shorter clip and try again.", "error");
+        return;
+      }
 
       const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextConstructor) {
@@ -807,7 +766,7 @@ function App() {
       const controller = new AbortController();
       recording.transcriptionRequest = controller;
       const transcript = (await transcribeSpeech({
-        audio: encodeMonoWav(decodedAudio),
+        audio: recordedAudio,
         language: recording.recognitionLanguage,
         signal: controller.signal,
       })).trim();

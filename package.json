@@ -1,0 +1,19 @@
+{
+  "name": "uniread-ai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev --workspace=uniread-ai",
+    "dev:backend": "npm run dev --workspace=uniread-ai-backend",
+    "build": "npm run build --workspace=uniread-ai",
+    "test": "npm test --workspace=uniread-ai-backend"
+  }
+}

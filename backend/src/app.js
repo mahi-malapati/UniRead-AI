@@ -24,6 +24,7 @@ export function createApp({ env = process.env, fetchImpl = fetch, logger = conso
   const config = readConfig(env);
   const app = express();
   app.disable("x-powered-by");
+  if (env.VERCEL === "1") app.set("trust proxy", 1);
   app.use(helmet());
   app.use(cors({
     origin(origin, callback) {
@@ -104,7 +105,7 @@ export function createApp({ env = process.env, fetchImpl = fetch, logger = conso
   app.post(
     "/api/speech/transcribe",
     speechLimiter,
-    express.raw({ type: ["audio/*", "application/octet-stream"], limit: "20mb" }),
+    express.raw({ type: ["audio/*", "application/octet-stream"], limit: "4mb" }),
     async (request, response, next) => {
       try {
         if (!isSpeechConfigured(config)) {

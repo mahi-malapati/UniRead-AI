@@ -1,4 +1,4 @@
-const apiUrl = (import.meta.env.VITE_API_URL || "http://localhost:3001").replace(/\/+$/, "");
+const apiUrl = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
 
 export async function analyzeTextDocument({ text, title, readingLevel, language }) {
   const response = await fetch(`${apiUrl}/api/analyze`, {
@@ -85,7 +85,7 @@ export async function transcribeSpeech({ audio, language, signal }) {
   try {
     response = await fetch(`${apiUrl}/api/speech/transcribe?language=${encodeURIComponent(language)}`, {
       method: "POST",
-      headers: { "Content-Type": "audio/wav" },
+      headers: { "Content-Type": audio.type || "application/octet-stream" },
       body: audio,
       signal,
     });

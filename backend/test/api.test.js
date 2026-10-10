@@ -316,8 +316,8 @@ describe("ElevenLabs speech endpoints", () => {
     try {
       const response = await fetch(`http://127.0.0.1:${speechServer.address().port}/api/speech/transcribe?language=Hindi`, {
         method: "POST",
-        headers: { "Content-Type": "audio/wav" },
-        body: Buffer.from("fake-wav"),
+        headers: { "Content-Type": "audio/webm" },
+        body: Buffer.from("fake-webm"),
       });
       assert.equal(response.status, 200);
       assert.deepEqual(await response.json(), { text: "Recognized speech." });
@@ -325,7 +325,7 @@ describe("ElevenLabs speech endpoints", () => {
       assert.equal(providerRequest.options.headers["xi-api-key"], speechConfiguredEnv.ELEVENLABS_API_KEY);
       assert.equal(providerRequest.options.body.get("model_id"), "scribe_v2");
       assert.equal(providerRequest.options.body.get("language_code"), "hi");
-      assert.equal(providerRequest.options.body.get("file").type, "audio/wav");
+      assert.equal(providerRequest.options.body.get("file").type, "audio/webm");
     } finally {
       await new Promise((resolve, reject) => speechServer.close((error) => error ? reject(error) : resolve()));
     }
@@ -482,4 +482,22 @@ it("rejects an unapproved frontend origin", async () => {
     headers: { Origin: "https://untrusted.example" },
   });
   assert.equal(response.status, 403);
+});
+
+it("allows the active Vercel deployment origin", async () => {
+  const deploymentOrigin = "https://uniread-preview.vercel.app";
+  const deploymentServer = createServer(createApp({
+    env: { ...configuredEnv, VERCEL: "1", VERCEL_URL: "uniread-preview.vercel.app" },
+    logger: { error() {} },
+  }));
+  await new Promise((resolve) => deploymentServer.listen(0, "127.0.0.1", resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${deploymentServer.address().port}/api/health`, {
+      headers: { Origin: deploymentOrigin },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("access-control-allow-origin"), deploymentOrigin);
+  } finally {
+    await new Promise((resolve, reject) => deploymentServer.close((error) => error ? reject(error) : resolve()));
+  }
 });
