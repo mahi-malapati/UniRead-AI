@@ -35,7 +35,7 @@ export async function applyReaderCommand({ text, command, title, language, signa
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") throw error;
-    throw new Error("Can't reach the model API. Start the backend and configure OPENAI_API_KEY in backend/.env.");
+    throw new Error("Can't reach the model API. Start the backend and configure GEMINI_API_KEY in backend/.env.");
   }
 
   let payload;
@@ -64,7 +64,7 @@ export async function synthesizeSpeech({ text, voice, language, signal }) {
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") throw error;
-    throw new Error("Can't reach the speech API. Start the backend and configure ELEVENLABS_API_KEY in backend/.env.");
+    throw new Error("Can't reach the speech API. Start the backend and configure GEMINI_API_KEY in backend/.env.");
   }
 
   if (!response.ok) {
@@ -91,7 +91,7 @@ export async function transcribeSpeech({ audio, language, signal }) {
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") throw error;
-    throw new Error("Can't reach the speech API. Start the backend and configure ELEVENLABS_API_KEY in backend/.env.");
+    throw new Error("Can't reach the speech API. Start the backend and configure GEMINI_API_KEY in backend/.env.");
   }
 
   let payload;
@@ -115,7 +115,7 @@ export async function getSpeechServiceHealth({ signal } = {}) {
     response = await fetch(`${apiUrl}/api/speech/health`, { cache: "no-store", signal });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") throw error;
-    throw new Error("Can't reach the speech API. Start the backend and configure ELEVENLABS_API_KEY in backend/.env.");
+    throw new Error("Can't reach the speech API. Start the backend and configure GEMINI_API_KEY in backend/.env.");
   }
 
   let payload;

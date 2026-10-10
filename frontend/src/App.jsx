@@ -204,6 +204,51 @@ function PictorialDocumentScene({ scene, documentName, level }) {
   );
 }
 
+function encodeMonoWav(audioBuffer) {
+  const sampleRate = 11_025;
+  const frameCount = Math.ceil(audioBuffer.length * sampleRate / audioBuffer.sampleRate);
+  const wav = new ArrayBuffer(44 + frameCount * 2);
+  const view = new DataView(wav);
+  const writeAscii = (offset, value) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + frameCount * 2, true);
+  writeAscii(8, "WAVE");
+  writeAscii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeAscii(36, "data");
+  view.setUint32(40, frameCount * 2, true);
+
+  const channels = Array.from(
+    { length: audioBuffer.numberOfChannels },
+    (_, index) => audioBuffer.getChannelData(index),
+  );
+  const ratio = audioBuffer.sampleRate / sampleRate;
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const sourceIndex = frame * ratio;
+    const lowerIndex = Math.min(Math.floor(sourceIndex), audioBuffer.length - 1);
+    const upperIndex = Math.min(lowerIndex + 1, audioBuffer.length - 1);
+    const fraction = sourceIndex - lowerIndex;
+    const monoSample = channels.reduce((sum, channel) => {
+      const sample = channel[lowerIndex] * (1 - fraction) + channel[upperIndex] * fraction;
+      return sum + sample;
+    }, 0) / channels.length;
+    const clippedSample = Math.max(-1, Math.min(1, monoSample));
+    view.setInt16(44 + frame * 2, clippedSample < 0 ? clippedSample * 0x8000 : clippedSample * 0x7fff, true);
+  }
+
+  return new Blob([wav], { type: "audio/wav" });
+}
+
 const icons = {
   book: (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -692,7 +737,7 @@ function App() {
     const controller = new AbortController();
     speechRequestRef.current = controller;
     setIsGeneratingSpeech(true);
-    showToast("Sending text to ElevenLabs for speech…", "loading");
+    showToast("Sending text to Google AI Studio for speech…", "loading");
     try {
       const audioBlob = await synthesizeSpeech({
         text: content,
@@ -723,7 +768,7 @@ function App() {
       const wasCancelled = controller.signal.aborted;
       stopSpeech();
       if (!wasCancelled) {
-        showToast(`${error instanceof Error ? error.message : "Read aloud could not be completed."} Check the ElevenLabs API key, voice settings, and account quota.`, "error");
+        showToast(`${error instanceof Error ? error.message : "Read aloud could not be completed."} Check the Google AI Studio API key, model settings, and account quota.`, "error");
       }
       return false;
     } finally {
@@ -738,7 +783,7 @@ function App() {
     setIsListening(false);
     setIsDictating(false);
     setIsTranscribing(true);
-    showToast("Sending your recording to ElevenLabs for transcription…", "loading");
+    showToast("Sending your recording to Google AI Studio for transcription…", "loading");
     let audioContext;
     try {
       const recordedAudio = new Blob(recording.chunks, { type: recording.recorder.mimeType });
@@ -746,11 +791,6 @@ function App() {
         showToast("No microphone audio was recorded. Check your microphone and record again.", "error");
         return;
       }
-      if (recordedAudio.size > 4 * 1024 * 1024) {
-        showToast("Recordings must be 4 MB or smaller. Record a shorter clip and try again.", "error");
-        return;
-      }
-
       const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextConstructor) {
         throw new Error("Audio conversion is not available in this browser.");
@@ -763,10 +803,16 @@ function App() {
         return;
       }
 
+      const wavAudio = encodeMonoWav(decodedAudio);
+      if (wavAudio.size > 4 * 1024 * 1024) {
+        showToast("The recording is too large to transcribe. Record a shorter clip and try again.", "error");
+        return;
+      }
+
       const controller = new AbortController();
       recording.transcriptionRequest = controller;
       const transcript = (await transcribeSpeech({
-        audio: recordedAudio,
+        audio: wavAudio,
         language: recording.recognitionLanguage,
         signal: controller.signal,
       })).trim();
@@ -784,7 +830,7 @@ function App() {
       }
     } catch (error) {
       if (!(error instanceof Error && error.name === "AbortError")) {
-        showToast(`${error instanceof Error ? error.message : "Speech recognition failed."} Check the ElevenLabs API key and try again.`, "error");
+        showToast(`${error instanceof Error ? error.message : "Speech recognition failed."} Check the Google AI Studio API key and try again.`, "error");
       }
     } finally {
       recording.stream.getTracks().forEach((track) => track.stop());
@@ -809,10 +855,10 @@ function App() {
       setIsSpeechConfigured(speechConfigured);
       setRecognitionLanguages(installedLanguages);
       if (!speechConfigured) {
-        throw new Error("ElevenLabs is not configured. Add ELEVENLABS_API_KEY to backend/.env, then restart the backend.");
+        throw new Error("Google AI Studio is not configured. Add GEMINI_API_KEY to backend/.env, then restart the backend.");
       }
       if (installedLanguages.length === 0) {
-        throw new Error("ElevenLabs has no speech recognition languages available for this account.");
+        throw new Error("Google AI Studio has no speech recognition languages available.");
       }
       const activeRecognitionLanguage = installedLanguages.includes(recognitionLanguage)
         ? recognitionLanguage
@@ -861,7 +907,7 @@ function App() {
       if (error instanceof Error && error.name === "NotAllowedError") {
         showToast("Microphone access was denied. Allow microphone access for this site in your browser settings, then try again.", "error");
       } else {
-        showToast(`${error instanceof Error ? error.message : "Could not start microphone recording."} Check the backend, ElevenLabs API key, and microphone permission, then try again.`, "error");
+        showToast(`${error instanceof Error ? error.message : "Could not start microphone recording."} Check the backend, Google AI Studio API key, and microphone permission, then try again.`, "error");
       }
     } finally {
       captureStartingRef.current = false;
@@ -973,7 +1019,7 @@ function App() {
     } else if (/(listen|audio|read aloud|speech)/.test(normalized)) {
       answer = "Choose a voice, then press Listen in the reader controls to hear the current view. Press Stop to end playback.";
     } else if (/(voice command|microphone|dictat|speak)/.test(normalized)) {
-      answer = "Use Dictate text in the paste panel to speak text into the text box. The Voice commands button in the reader transcribes an instruction for you to review before applying. Both require browser microphone permission and an ElevenLabs API key configured on the backend.";
+      answer = "Use Dictate text in the paste panel to speak text into the text box. The Voice commands button in the reader transcribes an instruction for you to review before applying. Both require browser microphone permission and a Google AI Studio API key configured on the backend.";
     } else if (/(language|translate|spanish|hindi)/.test(normalized)) {
       answer = "Choose a language from “Read in”. Spanish and Hindi translations are sample previews for the included example; uploaded or pasted text stays in its original language.";
     } else if (/(dark mode|dark theme|appearance)/.test(normalized)) {
@@ -1329,12 +1375,12 @@ function App() {
                   <span className="how-page-number">03</span>
                   <span className="how-page-icon">{icons.sound}</span>
                   <h2>Read or listen</h2>
-                  <p>Listen uses ElevenLabs text-to-speech. You can also dictate commands such as “key points”; review the transcription and send it with the arrow. Speech requires an ElevenLabs API key and browser microphone permission.</p>
+                  <p>Listen uses Google AI Studio text-to-speech. You can also dictate commands such as “key points”; review the transcription and send it with the arrow. Speech requires a Google AI Studio API key and browser microphone permission.</p>
                 </article>
               </div>
               <section className="how-page-note">
                 <h2>About this prototype</h2>
-                <p>Smart quick actions and document analysis use the configured model provider; saved shortcuts and action sequences stay in this browser. Read aloud and voice recognition use ElevenLabs through the backend; the API key stays on the server. Reader-level and sample translation controls remain previews, and picture explanation is a placeholder.</p>
+                <p>Smart quick actions and document analysis use the configured model provider; saved shortcuts and action sequences stay in this browser. Read aloud and voice recognition use Google AI Studio through the backend; the API key stays on the server. Reader-level and sample translation controls remain previews, and picture explanation is a placeholder.</p>
               </section>
               <button
                 className="how-page-back"
@@ -1514,7 +1560,7 @@ function App() {
                     disabled={isLoadingSpeechHealth || recognitionLanguages.length === 0 || isStartingCapture || isTranscribing}
                     onChange={(event) => setRecognitionLanguage(event.target.value)}
                   >
-                    {recognitionLanguages.length === 0 && <option value="">{isLoadingSpeechHealth ? "Checking speech service…" : isSpeechConfigured ? "Speech languages unavailable" : "Add ElevenLabs API key"}</option>}
+                    {recognitionLanguages.length === 0 && <option value="">{isLoadingSpeechHealth ? "Checking speech service…" : isSpeechConfigured ? "Speech languages unavailable" : "Add Google AI Studio API key"}</option>}
                     {recognitionLanguages.map((installedLanguage) => <option key={installedLanguage} value={installedLanguage}>{installedLanguage} recognition</option>)}
                   </select>
                     </label>
@@ -1790,7 +1836,7 @@ function App() {
                             disabled={isLoadingSpeechHealth || recognitionLanguages.length === 0 || isStartingCapture || isTranscribing || isApplyingReaderCommand}
                             onChange={(event) => setRecognitionLanguage(event.target.value)}
                           >
-                            {recognitionLanguages.length === 0 && <option value="">{isLoadingSpeechHealth ? "Checking speech service…" : isSpeechConfigured ? "Speech languages unavailable" : "Add ElevenLabs API key"}</option>}
+                            {recognitionLanguages.length === 0 && <option value="">{isLoadingSpeechHealth ? "Checking speech service…" : isSpeechConfigured ? "Speech languages unavailable" : "Add Google AI Studio API key"}</option>}
                             {recognitionLanguages.map((installedLanguage) => <option key={installedLanguage} value={installedLanguage}>{installedLanguage} recognition</option>)}
                           </select>
                         </label>
@@ -1822,7 +1868,7 @@ function App() {
                           </svg>
                         </button>
                       </form>
-                      <p className="voice-help">Speak or type an instruction, then press the arrow. The model edits the document in place; the revised text appears in the reader, not a separate answer tab. Recordings and read-aloud text are sent to ElevenLabs for processing.</p>
+                      <p className="voice-help">Speak or type an instruction, then press the arrow. The model edits the document in place; the revised text appears in the reader, not a separate answer tab. Recordings and read-aloud text are sent to Google AI Studio for processing.</p>
                     </div>
                   </div>
                 </div>

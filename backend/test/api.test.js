@@ -13,7 +13,7 @@ const configuredEnv = {
 };
 const speechConfiguredEnv = {
   ...configuredEnv,
-  ELEVENLABS_API_KEY: "test-elevenlabs-key",
+  GEMINI_API_KEY: "test-google-ai-studio-key",
   SPEECH_TIMEOUT_MS: "1000",
 };
 
@@ -257,10 +257,10 @@ describe("POST /api/analyze", () => {
   });
 });
 
-describe("ElevenLabs speech endpoints", () => {
+describe("Google AI Studio speech endpoints", () => {
   it("reports speech readiness without exposing the API key", async () => {
     const speechServer = createSpeechTestServer(async () => {
-      throw new Error("The health endpoint must not contact ElevenLabs.");
+      throw new Error("The health endpoint must not contact Google AI Studio.");
     });
     await new Promise((resolve) => speechServer.listen(0, "127.0.0.1", resolve));
     try {
@@ -269,19 +269,18 @@ describe("ElevenLabs speech endpoints", () => {
       assert.equal(response.status, 200);
       assert.equal(payload.speechConfigured, true);
       assert.deepEqual(payload.recognitionLanguages, ["English", "Spanish", "Hindi", "Telugu"]);
-      assert.equal(JSON.stringify(payload).includes(speechConfiguredEnv.ELEVENLABS_API_KEY), false);
+      assert.equal(JSON.stringify(payload).includes(speechConfiguredEnv.GEMINI_API_KEY), false);
     } finally {
       await new Promise((resolve, reject) => speechServer.close((error) => error ? reject(error) : resolve()));
     }
   });
 
-  it("uses the configured ElevenLabs voice for read-aloud MP3 audio", async () => {
+  it("uses the configured Gemini voice for read-aloud WAV audio", async () => {
     let providerRequest;
     const speechServer = createSpeechTestServer(async (url, options) => {
       providerRequest = { url, options, body: JSON.parse(options.body) };
-      return new Response(Buffer.from("fake-mp3"), {
-        status: 200,
-        headers: { "Content-Type": "audio/mpeg" },
+      return jsonResponse({
+        output_audio: { data: Buffer.from("fake-wav").toString("base64") },
       });
     });
     await new Promise((resolve) => speechServer.listen(0, "127.0.0.1", resolve));
@@ -292,48 +291,89 @@ describe("ElevenLabs speech endpoints", () => {
         body: JSON.stringify({ text: "Read this aloud.", voice: "female", language: "Telugu" }),
       });
       assert.equal(response.status, 200);
-      assert.equal(response.headers.get("content-type"), "audio/mpeg");
-      assert.equal(Buffer.from(await response.arrayBuffer()).toString(), "fake-mp3");
-      assert.equal(providerRequest.url, "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM?output_format=mp3_44100_128");
+      assert.equal(response.headers.get("content-type"), "audio/wav");
+      assert.equal(Buffer.from(await response.arrayBuffer()).toString(), "fake-wav");
+      assert.equal(providerRequest.url, "https://generativelanguage.googleapis.com/v1beta/interactions");
+      assert.equal(providerRequest.options.headers["x-goog-api-key"], speechConfiguredEnv.GEMINI_API_KEY);
       assert.deepEqual(providerRequest.body, {
-        text: "Read this aloud.",
-        model_id: "eleven_flash_v2_5",
-        language_code: "te",
+        model: "gemini-3.8-flash-lite-tts",
+        input: [{
+          type: "user_input",
+          content: [{
+            type: "text",
+            text: "Read this aloud.",
+            annotations: [{
+              type: "speech_metadata",
+              style: "Read clearly and naturally in Telugu. Read the text verbatim; do not translate or add words.",
+            }],
+          }],
+        }],
+        response_format: { type: "audio" },
+        generation_config: { speech_config: [{ voice: "Kore" }] },
       });
-      assert.equal(providerRequest.options.headers["xi-api-key"], speechConfiguredEnv.ELEVENLABS_API_KEY);
     } finally {
       await new Promise((resolve, reject) => speechServer.close((error) => error ? reject(error) : resolve()));
     }
   });
 
-  it("forwards microphone audio to Scribe and returns the transcript", async () => {
-    let providerRequest;
-    const speechServer = createSpeechTestServer(async (url, options) => {
-      providerRequest = { url, options };
-      return jsonResponse({ text: "Recognized speech." });
+  it("extracts audio from the Gemini interaction steps when output_audio is absent", async () => {
+    const speechServer = createSpeechTestServer(async () => {
+      return jsonResponse({
+        steps: [{
+          type: "model_output",
+          content: [{ type: "audio", data: Buffer.from("step-wav").toString("base64") }],
+        }],
+      });
     });
     await new Promise((resolve) => speechServer.listen(0, "127.0.0.1", resolve));
     try {
-      const response = await fetch(`http://127.0.0.1:${speechServer.address().port}/api/speech/transcribe?language=Hindi`, {
+      const response = await fetch(`http://127.0.0.1:${speechServer.address().port}/api/speech`, {
         method: "POST",
-        headers: { "Content-Type": "audio/webm" },
-        body: Buffer.from("fake-webm"),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "Read this aloud." }),
       });
       assert.equal(response.status, 200);
-      assert.deepEqual(await response.json(), { text: "Recognized speech." });
-      assert.equal(providerRequest.url, "https://api.elevenlabs.io/v1/speech-to-text");
-      assert.equal(providerRequest.options.headers["xi-api-key"], speechConfiguredEnv.ELEVENLABS_API_KEY);
-      assert.equal(providerRequest.options.body.get("model_id"), "scribe_v2");
-      assert.equal(providerRequest.options.body.get("language_code"), "hi");
-      assert.equal(providerRequest.options.body.get("file").type, "audio/webm");
+      assert.equal(Buffer.from(await response.arrayBuffer()).toString(), "step-wav");
     } finally {
       await new Promise((resolve, reject) => speechServer.close((error) => error ? reject(error) : resolve()));
     }
   });
 
-  it("requires an ElevenLabs key before forwarding audio", async () => {
+  it("sends WAV audio to Gemini for transcription in the selected language", async () => {
+    let providerRequest;
+    const speechServer = createSpeechTestServer(async (url, options) => {
+      providerRequest = { url, options, body: JSON.parse(options.body) };
+      return jsonResponse({
+        candidates: [{ content: { parts: [{ text: "Recognized speech." }] } }],
+      });
+    });
+    await new Promise((resolve) => speechServer.listen(0, "127.0.0.1", resolve));
+    try {
+      const audio = Buffer.from("fake-wav");
+      const response = await fetch(`http://127.0.0.1:${speechServer.address().port}/api/speech/transcribe?language=Hindi`, {
+        method: "POST",
+        headers: { "Content-Type": "audio/wav" },
+        body: audio,
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { text: "Recognized speech." });
+      assert.equal(providerRequest.url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent");
+      assert.equal(providerRequest.options.headers["x-goog-api-key"], speechConfiguredEnv.GEMINI_API_KEY);
+      assert.deepEqual(providerRequest.body.contents[0].parts[0], {
+        text: "Transcribe the spoken words verbatim in Hindi. Return only the transcription, without labels, translation, timestamps, or explanation.",
+      });
+      assert.deepEqual(providerRequest.body.contents[0].parts[1], {
+        inline_data: { mime_type: "audio/wav", data: audio.toString("base64") },
+      });
+      assert.deepEqual(providerRequest.body.generationConfig, { temperature: 0 });
+    } finally {
+      await new Promise((resolve, reject) => speechServer.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  it("requires a Google AI Studio key before forwarding audio", async () => {
     const speechServer = createSpeechTestServer(async () => {
-      throw new Error("The unconfigured speech endpoint must not contact ElevenLabs.");
+      throw new Error("The unconfigured speech endpoint must not contact Google AI Studio.");
     }, configuredEnv);
     await new Promise((resolve) => speechServer.listen(0, "127.0.0.1", resolve));
     try {
@@ -343,7 +383,7 @@ describe("ElevenLabs speech endpoints", () => {
         body: JSON.stringify({ text: "Read this." }),
       });
       assert.equal(response.status, 503);
-      assert.match((await response.json()).error, /ELEVENLABS_API_KEY/);
+      assert.match((await response.json()).error, /GEMINI_API_KEY/);
     } finally {
       await new Promise((resolve, reject) => speechServer.close((error) => error ? reject(error) : resolve()));
     }
@@ -475,7 +515,46 @@ describe("POST /api/reader-command", () => {
       await new Promise((resolve, reject) => testServer.close((error) => error ? reject(error) : resolve()));
     }
   });
+
+  it("uses Google AI Studio Gemini key for reader commands when configured", async () => {
+    let providerRequest;
+    const geminiEnv = {
+      PORT: "3003",
+      FRONTEND_ORIGINS: "http://localhost:5173",
+      GEMINI_API_KEY: "test-gemini-command-key",
+      GEMINI_COMMAND_MODEL: "gemini-3.8-flash",
+      ANALYSIS_TIMEOUT_MS: "1000",
+    };
+    const testServer = createServer(createApp({
+      env: geminiEnv,
+      logger: { error() {} },
+      async fetchImpl(url, options) {
+        providerRequest = { url, options, body: JSON.parse(options.body) };
+        return jsonResponse({
+          candidates: [{ content: { parts: [{ text: JSON.stringify({ text: "Gemini revised document." }) }] } }],
+        });
+      },
+    }));
+    await new Promise((resolve) => testServer.listen(0, "127.0.0.1", resolve));
+    try {
+      const response = await fetch(`http://127.0.0.1:${testServer.address().port}/api/reader-command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "A document.", command: "Make it simpler." }),
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        text: "Gemini revised document.",
+        model: "gemini-3.8-flash",
+      });
+      assert.equal(providerRequest.url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent");
+      assert.equal(providerRequest.options.headers["x-goog-api-key"], "test-gemini-command-key");
+    } finally {
+      await new Promise((resolve, reject) => testServer.close((error) => error ? reject(error) : resolve()));
+    }
+  });
 });
+
 
 it("rejects an unapproved frontend origin", async () => {
   const response = await makeRequest({ text: "A document." }, {

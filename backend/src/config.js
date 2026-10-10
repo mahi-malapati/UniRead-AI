@@ -47,18 +47,23 @@ export function readConfig(env = process.env) {
       ? env.GROQ_MODEL || env.OPENAI_MODEL || "openai/gpt-oss-120b"
       : env.OPENAI_MODEL || env.GROQ_MODEL || "gpt-4o-mini",
     analysisTimeoutMs: timeout,
-    elevenLabsApiKey: env.ELEVENLABS_API_KEY || "",
-    elevenLabsBaseUrl: (env.ELEVENLABS_BASE_URL || "https://api.elevenlabs.io").replace(/\/+$/, ""),
-    elevenLabsFemaleVoiceId: env.ELEVENLABS_FEMALE_VOICE_ID || "21m00Tcm4TlvDq8ikWAM",
-    elevenLabsMaleVoiceId: env.ELEVENLABS_MALE_VOICE_ID || "pNInz6obpgDQGcFmaJgB",
+    geminiApiKey: env.GEMINI_API_KEY || "",
+    geminiApiBaseUrl: (env.GEMINI_API_BASE_URL || "https://generativelanguage.googleapis.com").replace(/\/+$/, ""),
+    geminiSpeechModel: env.GEMINI_SPEECH_MODEL || "gemini-3.8-flash-lite-tts",
+    geminiTranscriptionModel: env.GEMINI_TRANSCRIPTION_MODEL || "gemini-3.8-flash",
+    geminiCommandModel: env.GEMINI_COMMAND_MODEL || env.GEMINI_TRANSCRIPTION_MODEL || "gemini-3.8-flash",
     speechTimeoutMs: speechTimeout,
   };
 }
 
 export function isAnalysisConfigured(config) {
-  return Boolean(config.openAiApiKey);
+  return Boolean(config.openAiApiKey || config.geminiApiKey);
+}
+
+export function isCommandConfigured(config) {
+  return Boolean(config.geminiApiKey || config.openAiApiKey);
 }
 
 export function isSpeechConfigured(config) {
-  return Boolean(config.elevenLabsApiKey);
+  return Boolean(config.geminiApiKey);
 }

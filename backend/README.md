@@ -6,13 +6,13 @@ The reader command field also sends typed or offline-transcribed instructions to
 
 The provider key must also have available API billing credits/quota. If the provider reports exhausted quota, the reader shows that reason and keeps the original document unchanged until billing is restored.
 
-Read aloud and speech recognition use the ElevenLabs API through the Express backend. The API key stays server-side in `backend/.env`.
+Read aloud and speech recognition use Google AI Studio through the Express backend. The Gemini API key stays server-side in `backend/.env`.
 
 ## Requirements
 
 - Node.js 22.12 or newer
 - A Groq API key, or another compatible provider key/base URL/model
-- An ElevenLabs API key for read aloud and speech recognition
+- A Google AI Studio API key for read aloud and speech recognition
 
 ## Configure
 
@@ -20,7 +20,7 @@ Read aloud and speech recognition use the ElevenLabs API through the Express bac
 2. Create a Groq API key in the Groq console. Do not use an OpenAI API key in `GROQ_API_KEY`.
 3. For local development, the Vite server proxies `/api` to `http://localhost:3001`. If the API is hosted on a different origin, copy `frontend/.env.example` to `frontend/.env` and set `VITE_API_URL` to that origin.
 4. Set `FRONTEND_ORIGINS` in `backend/.env` to the exact frontend origins allowed to call the API. Local development defaults allow the Vite ports 5173 and 5177 on `localhost` and `127.0.0.1`.
-5. Set `ELEVENLABS_API_KEY` in `backend/.env` to enable ElevenLabs text-to-speech and speech-to-text. Optional settings select the TTS model, female/male voice IDs, and speech timeout.
+5. Set `GEMINI_API_KEY` in `backend/.env` to enable Gemini text-to-speech and speech-to-text. Optional settings select the TTS and transcription models and speech timeout.
 
 To use another Groq model or endpoint, set `GROQ_MODEL` or `GROQ_BASE_URL`. The backend also continues to support the legacy `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_BASE_URL` settings when the configured endpoint is not Groq.
 
@@ -36,13 +36,13 @@ npm run dev
 
 Run the frontend separately with `npm --prefix frontend run dev`. The health endpoint at `http://localhost:3001/api/health` reports whether the provider key is configured without revealing it.
 
-### ElevenLabs speech
+### Google AI Studio speech
 
-The browser records microphone input and sends the compressed recording to the backend, which forwards audio to ElevenLabs Scribe v2 and returns the transcript. Read aloud sends the selected reader text to ElevenLabs Flash v2.5 and returns MP3 audio for browser playback. No Python service or speech model downloads are required. Microphone access is required, and recordings are limited to 3 minutes/4 MB.
+The browser records microphone input and sends a WAV recording to the backend, which asks Gemini to transcribe it. Read aloud sends the selected reader text to Gemini Flash-Lite TTS and returns WAV audio for browser playback. No Python service or speech model downloads are required. Microphone access is required, and recordings are limited to 3 minutes/4 MB.
 
-`GET /api/speech/health` reports whether an ElevenLabs key is configured and which transcription-language choices are available. `POST /api/speech` returns MP3 audio and accepts up to 40,000 characters using ElevenLabs Flash v2.5. `POST /api/speech/transcribe?language=English` accepts an audio body and returns `{ "text": "recognized words" }`. Set `ELEVENLABS_BASE_URL` for a regional ElevenLabs API endpoint, `ELEVENLABS_FEMALE_VOICE_ID` / `ELEVENLABS_MALE_VOICE_ID` for your preferred voices, and `SPEECH_TIMEOUT_MS` to change the request timeout.
+`GET /api/speech/health` reports whether a Gemini API key is configured and which transcription-language choices are available. `POST /api/speech` returns WAV audio and accepts up to 40,000 characters. `POST /api/speech/transcribe?language=English` accepts a WAV audio body and returns `{ "text": "recognized words" }`. Set `GEMINI_SPEECH_MODEL` or `GEMINI_TRANSCRIPTION_MODEL` to select other compatible Gemini models and `SPEECH_TIMEOUT_MS` to change the request timeout.
 
-The ElevenLabs key is never sent to the frontend. Speech audio and microphone recordings are sent to ElevenLabs for processing and are subject to your ElevenLabs account, plan, and data-handling settings.
+The `GEMINI_API_KEY` is never sent to the frontend. Read-aloud text and microphone recordings are sent to Google AI Studio for processing and are subject to your Google account and data-handling settings.
 
 ## API
 

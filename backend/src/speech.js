@@ -1,15 +1,8 @@
 import { ProviderError } from "./analysis.js";
 
-const voiceIds = {
-  female: "elevenLabsFemaleVoiceId",
-  male: "elevenLabsMaleVoiceId",
-};
-
-const languageCodes = {
-  English: "en",
-  Spanish: "es",
-  Hindi: "hi",
-  Telugu: "te",
+const voices = {
+  female: "Kore",
+  male: "Puck",
 };
 
 async function getProviderError(response, operation) {
@@ -21,73 +14,110 @@ async function getProviderError(response, operation) {
   }
 
   if (response.status === 401 || response.status === 403) {
-    return new ProviderError("ElevenLabs rejected the API key. Check ELEVENLABS_API_KEY in backend/.env.", 502);
+    return new ProviderError("Google AI Studio rejected the API key. Check GEMINI_API_KEY in backend/.env.", 502);
   }
   if (response.status === 429) {
-    return new ProviderError("ElevenLabs rate limit or account quota reached. Check your ElevenLabs plan and try again.", 429);
+    return new ProviderError("Google AI Studio rate limit or quota reached. Check your Google AI Studio project and try again.", 429);
   }
 
-  const providerMessage = payload?.detail?.message
-    || payload?.detail
-    || payload?.message
-    || payload?.error?.message;
+  const providerMessage = payload?.error?.message;
   if (typeof providerMessage === "string" && providerMessage.length < 300) {
-    return new ProviderError(`ElevenLabs ${operation} failed: ${providerMessage}`, 502);
+    return new ProviderError(`Google AI Studio ${operation} failed: ${providerMessage}`, 502);
   }
-  return new ProviderError(`ElevenLabs ${operation} failed with status ${response.status}.`, 502);
+  return new ProviderError(`Google AI Studio ${operation} failed with status ${response.status}.`, 502);
+}
+
+async function readJsonResponse(response, operation) {
+  try {
+    return await response.json();
+  } catch {
+    throw new ProviderError(`Google AI Studio returned an unreadable ${operation} response.`, 502);
+  }
 }
 
 export async function requestSpeechSynthesis({ config, input, fetchImpl }) {
-  const voiceId = config[voiceIds[input.voice]];
-  const url = `${config.elevenLabsBaseUrl}/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`;
-  const response = await fetchImpl(url, {
+  const response = await fetchImpl(`${config.geminiApiBaseUrl}/v1beta/interactions`, {
     method: "POST",
     headers: {
-      "xi-api-key": config.elevenLabsApiKey,
+      "x-goog-api-key": config.geminiApiKey,
       "Content-Type": "application/json",
-      Accept: "audio/mpeg",
     },
     body: JSON.stringify({
-      text: input.text,
-      model_id: "eleven_flash_v2_5",
-      language_code: languageCodes[input.language],
+      model: config.geminiSpeechModel,
+      input: [{
+        type: "user_input",
+        content: [{
+          type: "text",
+          text: input.text,
+          annotations: [{
+            type: "speech_metadata",
+            style: `Read clearly and naturally in ${input.language}. Read the text verbatim; do not translate or add words.`,
+          }],
+        }],
+      }],
+      response_format: { type: "audio" },
+      generation_config: {
+        speech_config: [{ voice: voices[input.voice] }],
+      },
     }),
     signal: AbortSignal.timeout(config.speechTimeoutMs),
   });
 
   if (!response.ok) throw await getProviderError(response, "speech synthesis");
-  return Buffer.from(await response.arrayBuffer());
+  const payload = await readJsonResponse(response, "speech synthesis");
+  const audioData = payload.output_audio?.data
+    || payload.steps
+      ?.filter((step) => step.type === "model_output")
+      .flatMap((step) => step.content || [])
+      .filter((part) => part.type === "audio")
+      .at(-1)
+      ?.data;
+  if (typeof audioData !== "string" || !audioData) {
+    throw new ProviderError("Google AI Studio returned no speech audio.", 502);
+  }
+  return Buffer.from(audioData, "base64");
 }
 
 export async function requestSpeechTranscription({ config, audio, contentType, language, fetchImpl }) {
-  const form = new FormData();
-  const normalizedType = contentType.split(";")[0].trim().toLowerCase();
-  const extension = normalizedType.includes("webm") ? "webm"
-    : normalizedType.includes("ogg") ? "ogg"
-      : normalizedType.includes("mp4") ? "mp4"
-        : normalizedType.includes("mpeg") ? "mp3"
-          : "wav";
-  form.append("file", new Blob([audio], { type: normalizedType || "audio/wav" }), `recording.${extension}`);
-  form.append("model_id", "scribe_v2");
-  if (languageCodes[language]) form.append("language_code", languageCodes[language]);
-
-  const response = await fetchImpl(`${config.elevenLabsBaseUrl}/v1/speech-to-text`, {
-    method: "POST",
-    headers: { "xi-api-key": config.elevenLabsApiKey },
-    body: form,
-    signal: AbortSignal.timeout(config.speechTimeoutMs),
-  });
+  const response = await fetchImpl(
+    `${config.geminiApiBaseUrl}/v1beta/models/${encodeURIComponent(config.geminiTranscriptionModel)}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": config.geminiApiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [{
+          role: "user",
+          parts: [
+            {
+              text: `Transcribe the spoken words verbatim in ${language}. Return only the transcription, without labels, translation, timestamps, or explanation.`,
+            },
+            {
+              inline_data: {
+                mime_type: contentType.split(";")[0].trim().toLowerCase() || "audio/wav",
+                data: audio.toString("base64"),
+              },
+            },
+          ],
+        }],
+        generationConfig: { temperature: 0 },
+      }),
+      signal: AbortSignal.timeout(config.speechTimeoutMs),
+    },
+  );
 
   if (!response.ok) throw await getProviderError(response, "speech recognition");
-
-  let payload;
-  try {
-    payload = await response.json();
-  } catch {
-    throw new ProviderError("ElevenLabs returned an unreadable speech recognition response.", 502);
+  const payload = await readJsonResponse(response, "speech recognition");
+  const text = payload.candidates
+    ?.flatMap((candidate) => candidate.content?.parts || [])
+    .map((part) => part.text)
+    .filter((part) => typeof part === "string")
+    .join("")
+    .trim();
+  if (typeof text !== "string") {
+    throw new ProviderError("Google AI Studio returned an invalid speech recognition response.", 502);
   }
-  if (typeof payload?.text !== "string") {
-    throw new ProviderError("ElevenLabs returned an invalid speech recognition response.", 502);
-  }
-  return payload.text;
+  return text;
 }

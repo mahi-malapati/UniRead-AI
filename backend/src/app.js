@@ -10,7 +10,7 @@ import {
   requestTextAnalysis,
   readerCommandRequestSchema,
 } from "./analysis.js";
-import { isAnalysisConfigured, isSpeechConfigured, readConfig } from "./config.js";
+import { isAnalysisConfigured, isCommandConfigured, isSpeechConfigured, readConfig } from "./config.js";
 import { requestSpeechSynthesis, requestSpeechTranscription } from "./speech.js";
 
 class HttpError extends Error {
@@ -73,7 +73,7 @@ export function createApp({ env = process.env, fetchImpl = fetch, logger = conso
   app.post("/api/speech", speechLimiter, async (request, response, next) => {
     try {
       if (!isSpeechConfigured(config)) {
-        throw new HttpError(503, "Speech is not configured. Set ELEVENLABS_API_KEY in backend/.env and restart the API.");
+        throw new HttpError(503, "Speech is not configured. Set GEMINI_API_KEY in backend/.env and restart the API.");
       }
       const parsed = z.strictObject({
         text: z.string().trim().min(1).max(40_000),
@@ -86,16 +86,16 @@ export function createApp({ env = process.env, fetchImpl = fetch, logger = conso
         const audio = await requestSpeechSynthesis({ config, input: parsed.data, fetchImpl });
         response
           .status(200)
-          .set("Content-Type", "audio/mpeg")
+          .set("Content-Type", "audio/wav")
           .set("Cache-Control", "no-store")
           .send(audio);
       } catch (error) {
         if (error instanceof ProviderError) throw error;
         if (error?.name === "TimeoutError" || error?.name === "AbortError") {
-          throw new ProviderError("ElevenLabs speech synthesis timed out. Try shorter text or retry later.", 504);
+          throw new ProviderError("Google AI Studio speech synthesis timed out. Try shorter text or retry later.", 504);
         }
-        logger.error("ElevenLabs speech synthesis request failed.", error);
-        throw new ProviderError("ElevenLabs speech synthesis is temporarily unavailable.", 503);
+        logger.error("Google AI Studio speech synthesis request failed.", error);
+        throw new ProviderError("Google AI Studio speech synthesis is temporarily unavailable.", 503);
       }
     } catch (error) {
       next(error);
@@ -109,7 +109,7 @@ export function createApp({ env = process.env, fetchImpl = fetch, logger = conso
     async (request, response, next) => {
       try {
         if (!isSpeechConfigured(config)) {
-          throw new HttpError(503, "Speech recognition is not configured. Set ELEVENLABS_API_KEY in backend/.env and restart the API.");
+          throw new HttpError(503, "Speech recognition is not configured. Set GEMINI_API_KEY in backend/.env and restart the API.");
         }
         const language = z.enum(["English", "Spanish", "Hindi", "Telugu"]).safeParse(request.query.language);
         if (!language.success) {
@@ -131,10 +131,10 @@ export function createApp({ env = process.env, fetchImpl = fetch, logger = conso
         } catch (error) {
           if (error instanceof ProviderError) throw error;
           if (error?.name === "TimeoutError" || error?.name === "AbortError") {
-            throw new ProviderError("ElevenLabs speech recognition timed out. Record a shorter clip or retry later.", 504);
+            throw new ProviderError("Google AI Studio speech recognition timed out. Record a shorter clip or retry later.", 504);
           }
-          logger.error("ElevenLabs speech recognition request failed.", error);
-          throw new ProviderError("ElevenLabs speech recognition is temporarily unavailable.", 503);
+          logger.error("Google AI Studio speech recognition request failed.", error);
+          throw new ProviderError("Google AI Studio speech recognition is temporarily unavailable.", 503);
         }
       } catch (error) {
         next(error);
@@ -145,7 +145,7 @@ export function createApp({ env = process.env, fetchImpl = fetch, logger = conso
   app.post("/api/analyze", analyzeLimiter, async (request, response, next) => {
     try {
       if (!isAnalysisConfigured(config)) {
-        throw new HttpError(503, `Analysis is not configured. Set ${config.apiKeyName} in backend/.env and restart the API.`);
+        throw new HttpError(503, `Analysis is not configured. Set ${config.apiKeyName} or GEMINI_API_KEY in backend/.env and restart the API.`);
       }
 
       const parsedRequest = analysisRequestSchema.safeParse(request.body);
@@ -169,7 +169,7 @@ export function createApp({ env = process.env, fetchImpl = fetch, logger = conso
         readingLevel: input.readingLevel,
         language: input.language,
         analysis,
-        model: config.openAiModel,
+        model: config.openAiApiKey ? config.openAiModel : config.geminiCommandModel,
         createdAt: new Date().toISOString(),
       });
     } catch (error) {
@@ -179,8 +179,8 @@ export function createApp({ env = process.env, fetchImpl = fetch, logger = conso
 
   app.post("/api/reader-command", analyzeLimiter, async (request, response, next) => {
     try {
-      if (!isAnalysisConfigured(config)) {
-        throw new HttpError(503, `Model commands are not configured. Set ${config.apiKeyName} in backend/.env and restart the API.`);
+      if (!isCommandConfigured(config)) {
+        throw new HttpError(503, `Voice and reader commands are not configured. Set GEMINI_API_KEY or ${config.apiKeyName} in backend/.env and restart the API.`);
       }
 
       const parsedRequest = readerCommandRequestSchema.safeParse(request.body);
@@ -200,7 +200,7 @@ export function createApp({ env = process.env, fetchImpl = fetch, logger = conso
 
       response.status(200).json({
         text,
-        model: config.openAiModel,
+        model: config.geminiApiKey ? config.geminiCommandModel : config.openAiModel,
       });
     } catch (error) {
       next(error);
