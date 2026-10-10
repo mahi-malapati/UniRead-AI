@@ -352,6 +352,13 @@ h1 { margin: 10px 0 7px; font-size: clamp(25px, 3vw, 32px); font-weight: 700; le
 .action-feedback-submit { min-height: 30px; justify-self: start; padding: 0 10px; border: 0; border-radius: 6px; color: #fff; background: var(--green); font-size: 9px; font-weight: 700; }
 .action-feedback-submit:hover { background: var(--green-dark); }
 .action-feedback-thanks { margin: 0; color: var(--green-dark); font-size: 10px; font-weight: 650; }
+.frequent-shortcut-button { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 1px solid #9fc4a0; border-radius: 8px; color: var(--green-dark); background: var(--pale); font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.15s ease; }
+.frequent-shortcut-button:hover:not(:disabled) { background: #def0dd; border-color: var(--green); transform: translateY(-1px); }
+.frequent-shortcut-button:disabled { opacity: 0.5; cursor: not-allowed; }
+.frequent-shortcut-icon { font-size: 13px; }
+.frequent-shortcut-badge { display: inline-block; padding: 2px 6px; border: 1px solid #b8dab9; border-radius: 4px; background: #ffffff; color: var(--ink); font-family: monospace; font-size: 9px; font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+.dark-mode .frequent-shortcut-button { background: #25382b; border-color: #3f664a; color: #c0e8c4; }
+.dark-mode .frequent-shortcut-badge { background: #1c2b21; color: #e5ede6; border-color: #3f664a; }
 .mind-map { display: grid; justify-items: center; gap: 12px; padding: 6px 0; }
 .mind-map-root { display: grid; max-width: 520px; gap: 5px; padding: 11px 15px; border: 1px solid #a9c7a4; border-radius: 11px; color: var(--ink); background: var(--pale); text-align: center; }
 .mind-map-root strong { color: var(--green-dark); }

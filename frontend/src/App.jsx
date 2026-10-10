@@ -308,43 +308,43 @@ function ActionFeedback({ feedback, onChange, onSubmit }) {
   return (
     <form className="action-feedback" onSubmit={onSubmit} aria-labelledby="action-feedback-title">
       {feedback.submitted ? (
-        <p className="action-feedback-thanks" role="status">Thanks for helping improve “{feedback.action}”.</p>
+        <p className="action-feedback-thanks" role="status">✓ Thanks! Your feedback on “{feedback.action}” has been saved.</p>
       ) : (
         <>
           <div className="action-feedback-heading">
-            <strong id="action-feedback-title">Was “{feedback.action}” helpful?</strong>
-            <span>Your feedback is saved on this device.</span>
+            <strong id="action-feedback-title">Feedback on “{feedback.action}”</strong>
+            <span>How did it go? Share quick thoughts or suggestions:</span>
           </div>
           <div className="action-feedback-rating" role="group" aria-label="Rate this action">
             <button
               type="button"
               aria-pressed={feedback.rating === "helpful"}
               onClick={() => onChange({ ...feedback, rating: "helpful" })}
-            >Yes, helpful</button>
+            >👍 Yes, helpful</button>
             <button
               type="button"
               aria-pressed={feedback.rating === "not-helpful"}
               onClick={() => onChange({ ...feedback, rating: "not-helpful" })}
-            >Not quite</button>
+            >👎 Needs improvement</button>
           </div>
-          {feedback.rating && (
-            <div className="action-feedback-comment">
-              <label htmlFor="action-feedback-comment">Anything we could improve? <span>(optional)</span></label>
-              <textarea
-                id="action-feedback-comment"
-                value={feedback.comment}
-                maxLength={500}
-                rows={2}
-                onChange={(event) => onChange({ ...feedback, comment: event.target.value })}
-              />
-              <button className="action-feedback-submit" type="submit">Send feedback</button>
-            </div>
-          )}
+          <div className="action-feedback-comment">
+            <label htmlFor="action-feedback-comment">Your thoughts / feedback:</label>
+            <textarea
+              id="action-feedback-comment"
+              value={feedback.comment}
+              placeholder="Tell us what you liked or how this action could be improved..."
+              maxLength={500}
+              rows={2}
+              onChange={(event) => onChange({ ...feedback, comment: event.target.value })}
+            />
+            <button className="action-feedback-submit" type="submit">Submit feedback</button>
+          </div>
         </>
       )}
     </form>
   );
 }
+
 
 function App() {
   const [text, setText] = useState(sample.text);
@@ -1058,24 +1058,25 @@ function App() {
 
   function submitActionFeedback(event) {
     event.preventDefault();
-    if (!actionFeedback?.rating || actionFeedback.submitted) return;
+    if (!actionFeedback || actionFeedback.submitted) return;
     try {
       const storedFeedback = window.localStorage.getItem(ACTION_FEEDBACK_STORAGE_KEY);
       const history = storedFeedback ? JSON.parse(storedFeedback) : [];
       if (!Array.isArray(history)) throw new Error("Saved feedback data is invalid.");
       history.push({
         action: actionFeedback.action,
-        rating: actionFeedback.rating,
-        comment: actionFeedback.comment.trim(),
+        rating: actionFeedback.rating || "neutral",
+        comment: (actionFeedback.comment || "").trim(),
         createdAt: new Date().toISOString(),
       });
       window.localStorage.setItem(ACTION_FEEDBACK_STORAGE_KEY, JSON.stringify(history.slice(-30)));
       setActionFeedback((current) => current ? { ...current, submitted: true } : current);
-      showToast("Thanks for your feedback. It was saved on this device.", "success");
+      showToast("Thanks for your feedback! It was saved on this device.", "success");
     } catch (error) {
       showToast(`${error instanceof Error ? error.message : "Feedback could not be saved."} Check browser storage settings and try again.`, "error");
     }
   }
+
 
   async function handleChatFile(file) {
     if (!file) return;
@@ -1603,6 +1604,18 @@ function App() {
                       </div>
                     </div>
                     <button
+                      className="frequent-shortcut-button"
+                      type="button"
+                      title="Frequently performed action: Quick Simplify (Shortcut: Ctrl+Alt+S)"
+                      aria-label="Frequently performed action: Quick Simplify (Shortcut: Ctrl+Alt+S)"
+                      disabled={isAnalyzingReader || isAnalyzingDocument || !text.trim()}
+                      onClick={() => void runQuickAction("simplify")}
+                    >
+                      <span className="frequent-shortcut-icon" aria-hidden="true">⚡</span>
+                      <span>Quick Simplify</span>
+                      <kbd className="frequent-shortcut-badge">Ctrl+Alt+S</kbd>
+                    </button>
+                    <button
                       className="picture-explanation-toggle"
                       type="button"
                       aria-expanded={pictureExplanationOpen}
@@ -1617,6 +1630,7 @@ function App() {
                       </svg>
                       Picture explanation
                     </button>
+
                     <label className="language-control"><span className="option-label">Read in</span>
                       <select aria-label="Choose reading language" value={language} onChange={(event) => setLanguage(event.target.value)}>
                         <option value="English">English</option>
